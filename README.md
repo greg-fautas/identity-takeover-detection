@@ -1,5 +1,8 @@
 # Identity Takeover Detection
 
+[![Detection tests](https://github.com/greg-fautas/identity-takeover-detection/actions/workflows/detection-tests.yml/badge.svg)](https://github.com/greg-fautas/identity-takeover-detection/actions/workflows/detection-tests.yml)
+[![Validate](https://github.com/greg-fautas/identity-takeover-detection/actions/workflows/validate.yml/badge.svg)](https://github.com/greg-fautas/identity-takeover-detection/actions/workflows/validate.yml)
+
 Microsoft Sentinel detections for social-engineered account takeover. In this attack, someone phones the IT service desk pretending to be an employee, gets that employee's password or MFA reset, and signs in as them.
 
 Scattered Spider used this method in the 2023 MGM Resorts breach and keeps using it ([CISA advisory AA23-320A](https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-320a)). Every step uses valid credentials and normal admin tools, so endpoint security has no malware to catch. The evidence is split between identity logs, which most SIEMs collect, and the ticketing system, which most don't.
@@ -7,6 +10,21 @@ Scattered Spider used this method in the 2023 MGM Resorts breach and keeps using
 This project feeds ServiceNow tickets into Sentinel alongside Entra ID audit and sign-in logs. Five KQL analytics rules follow the attack from the reset onward. The lab includes an attack simulation for each rule, a benign reset that should stay silent, and a triage playbook for the analyst who gets the alert.
 
 **Stack:** Microsoft Sentinel · KQL · Entra ID · ServiceNow REST API · Python (Azure Monitor Logs Ingestion API) · MITRE ATT&CK · GitHub Actions
+
+## Try it in 5 minutes
+
+You don't need an Azure or ServiceNow account, just [Docker](https://www.docker.com/products/docker-desktop/):
+
+```
+git clone https://github.com/greg-fautas/identity-takeover-detection
+cd identity-takeover-detection
+docker compose run --rm replay
+```
+
+This starts Microsoft's free [Kusto emulator](https://learn.microsoft.com/azure/data-explorer/kusto-emulator-overview), which runs the same query engine as Sentinel. It loads simulated log records for every lab scenario, runs the five real rules against them, and prints which alerts fired, with the details an analyst would see. The same replay runs on every push ([Detection tests](https://github.com/greg-fautas/identity-takeover-detection/actions/workflows/detection-tests.yml)). Stop the emulator with `docker compose down` when you're done.
+
+- The emulator image is about 3.3 GB, and the compose file accepts its [license terms](https://learn.microsoft.com/azure/data-explorer/kusto-emulator-overview) for you (`ACCEPT_EULA=Y`).
+- The records are simulated, shaped like the real Sentinel tables. The replay proves the rule logic; the [live lab](docs/lab.md) proves it against real Entra ID telemetry.
 
 ## The attack chain
 
@@ -74,23 +92,27 @@ Watchlist: PrivilegedAccounts ────────────────�
 
 ## Validation
 
-Each scenario is run in the lab ([docs/lab.md](docs/lab.md#8-scenarios)) and the results are recorded here.
+Every scenario is replayed on the Kusto emulator on each push (see [Try it in 5 minutes](#try-it-in-5-minutes)) and run for real in the lab ([docs/lab.md](docs/lab.md#8-scenarios)).
 
-<!-- Fill in Result after each run: time to detect, plus a link to a redacted screenshot in docs/images/. -->
+<!-- Fill in Live lab after each run: time to detect, plus a link to a redacted screenshot in docs/images/. -->
 
-| Scenario | What happens | Should fire | Result |
-|---|---|---|---|
-| S1 Benign reset | Ticketed reset; the user signs in from their usual network | Nothing | |
-| S2 Social-engineered takeover | Phone ticket, MFA reset and Temporary Access Pass; the "attacker" signs in and enrolls MFA through a VPN exit in another country | ITD-002 | |
-| S3 Out-of-process reset | Reset with no ticket | ITD-001 | |
-| S4 Privileged reset | Reset of a watchlisted admin, no ticket | ITD-003 (plus ITD-001) | |
-| S5 Reset burst | One operator resets 5 accounts in a few minutes | ITD-004 (plus ITD-001 for each account) | |
-| S6 Persistence | OAuth consent, device registration and an inbox rule after S2 | ITD-005 | |
+| Scenario | What happens | Should fire | Replay | Live lab |
+|---|---|---|---|---|
+| S1 Benign reset | Ticketed reset; the user signs in from their usual network | Nothing | ✅ | |
+| S2 Social-engineered takeover | Phone ticket, MFA reset and Temporary Access Pass; the "attacker" signs in and enrolls MFA through a VPN exit in another country | ITD-002 | ✅ | |
+| S3 Out-of-process reset | Reset with no ticket | ITD-001 | ✅ | |
+| S4 Privileged reset | Reset of a watchlisted admin, no ticket | ITD-003 (plus ITD-001 later) | ✅ | |
+| S5 Reset burst | One operator resets 5 accounts in a few minutes | ITD-004 (plus ITD-001 later for each account) | ✅ | |
+| S6 Persistence | OAuth consent, device registration and an inbox rule after S2 | ITD-005 | ✅ | |
+
+The replay also runs two regression cases found in review. The first is an attacker who waits 6 hours before signing in: ITD-002 must still fire. The second is a user whose IPv6 address changed overnight: nothing should fire.
 
 ## Repository layout
 
 ```
 detections/   Sentinel analytics rules, one YAML file per rule
+replay/       scenario replay on the Kusto emulator (scenarios.py holds the simulated records)
+compose.yaml  runs the emulator and the replay: docker compose run --rm replay
 ingestion/    ServiceNow-to-Sentinel ticket pipeline and its test
 docs/         lab.md (build and attack the lab), triage-playbook.md, incident-report.md
 scripts/      validate_detections.py, extract_kql.py and check_kql.js, run by CI on every push

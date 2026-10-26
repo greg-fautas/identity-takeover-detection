@@ -1,5 +1,7 @@
 # Lab guide: build it, then attack it
 
+To see the rules work before building anything, run the replay first. It takes 5 minutes and needs no cloud accounts; see [Try it in 5 minutes](../README.md#try-it-in-5-minutes). This guide builds the real thing.
+
 The whole lab runs on free trials. When you're done, work through the teardown checklist in [step 10](#10-tear-down) so nothing keeps billing or stays weakened.
 
 Throughout, `<tenant>` means your lab domain, such as `itdlab.onmicrosoft.com`.

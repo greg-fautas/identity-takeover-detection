@@ -1,0 +1,19 @@
+# Replays the lab scenarios through the detection rules on Microsoft's Kusto emulator.
+# Run: docker compose run --rm replay     Clean up: docker compose down
+services:
+  kusto:
+    image: mcr.microsoft.com/azuredataexplorer/kustainer-linux:2026.10.09.0604-2640-afe0b4c-weeklyproduction
+    environment:
+      ACCEPT_EULA: "Y"  # accepts the emulator's license terms (see README)
+    ports:
+      - "127.0.0.1:8080:8080"  # localhost only, for exploring the data with your own queries
+  replay:
+    image: python:3.12-slim
+    depends_on:
+      - kusto
+    environment:
+      KUSTO_URL: http://kusto:8080
+    volumes:
+      - .:/repo:ro
+    working_dir: /repo
+    command: sh -c "pip install --quiet --disable-pip-version-check --root-user-action=ignore pyyaml && python replay/replay.py"
