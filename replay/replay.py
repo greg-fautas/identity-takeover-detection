@@ -38,8 +38,9 @@ SCHEMAS = {
 def kusto(command, db=DB):
     """Run a query or management command and return the first result table as a list of dicts."""
     endpoint = "mgmt" if command.startswith(".") else "query"
+    # Accept: application/json makes Kusto explain errors instead of a generic "Request is invalid"
     request = urllib.request.Request(f"{KUSTO}/v1/rest/{endpoint}", json.dumps({"db": db, "csl": command}).encode(),
-                                     {"Content-Type": "application/json"})
+                                     {"Content-Type": "application/json", "Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             table = json.load(response)["Tables"][0]
@@ -65,7 +66,7 @@ def literal(value, kind):
         return f"datetime({value:%Y-%m-%dT%H:%M:%SZ})"
     if kind == "dynamic":
         return f"dynamic({json.dumps(value)})"
-    return json.dumps("" if value is None else str(value))  # fixtures are ASCII, so JSON escaping is valid KQL
+    return json.dumps("" if value is None else str(value))  # JSON string escaping is valid KQL
 
 
 def setup():
@@ -87,9 +88,12 @@ def load(events, now):
         kusto(f".clear table {table} data")
     rows = {}
     for table, minutes_ago, fields in events:
+        # a misspelled field would otherwise load as null and quietly hide the event from every rule
+        if unknown := set(fields) - {column.split(":")[0] for column in SCHEMAS[table].split(", ")} - {"IngestDelay"}:
+            raise ValueError(f"{table} has no column {', '.join(sorted(unknown))}")
         happened = now - timedelta(minutes=minutes_ago)
         defaults = {"TimeGenerated": happened, "CreatedAt": happened, "UpdatedAt": happened,
-                    "IngestedAt": happened + timedelta(minutes=2)}
+                    "IngestedAt": happened + timedelta(minutes=fields.get("IngestDelay", 2))}
         rows.setdefault(table, []).append(defaults | fields)
     for table, table_rows in rows.items():
         columns = [column.split(":") for column in SCHEMAS[table].split(", ")]
@@ -100,7 +104,9 @@ def load(events, now):
 def rules():
     for path in sorted(DETECTIONS.glob("*.yaml")):
         rule = yaml.safe_load(path.read_text(encoding="utf-8"))
-        yield rule["name"].split()[0], rule["query"].replace("ingestion_time()", "IngestedAt")
+        # every table exists here, so a fuzzy union could only hide a broken leg
+        yield rule["name"].split()[0], (rule["query"].replace("ingestion_time()", "IngestedAt")
+                                        .replace("isfuzzy=true", "isfuzzy=false"))
 
 
 def main():
@@ -110,12 +116,23 @@ def main():
     detections = list(rules())
     lines, alerts, failed = [], [], False
     for scenario_id, title, expected, events in SCENARIOS:
-        load(events, datetime.now(timezone.utc))
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        load(events, now)
         fired = {}
         for rule_id, query in detections:
-            if results := kusto(query):
+            try:
+                # pin now() and ago() to the instant the records were placed relative to
+                results = kusto(f"set query_now = {literal(now, 'datetime')};\n{query}")
+            except RuntimeError as error:
+                raise RuntimeError(f"{scenario_id} / {rule_id}: {error}") from None
+            if results:
                 fired[rule_id] = results
-        passed = set(fired) == expected
+        # a rule must fire, and its alert must show the evidence it fired on
+        missing = [f"{rule_id}: {text}" for rule_id, texts in expected.items() if rule_id in fired
+                   for text in texts if text not in json.dumps(fired[rule_id])]
+        if missing:
+            print(f"{scenario_id} alert lacks {missing}", file=sys.stderr)
+        passed = set(fired) == set(expected) and not missing
         failed = failed or not passed
         lines.append(f"| {scenario_id} | {title} | {', '.join(sorted(expected)) or 'nothing'} "
                      f"| {', '.join(sorted(fired)) or 'nothing'} | {'PASS' if passed else '**FAIL**'} |")

@@ -24,7 +24,7 @@ docker compose run --rm replay
 This starts Microsoft's free [Kusto emulator](https://learn.microsoft.com/azure/data-explorer/kusto-emulator-overview), which runs the same query engine as Sentinel. It loads simulated log records for every lab scenario, runs the five real rules against them, and prints which alerts fired, with the details an analyst would see. The same replay runs on every push ([Detection tests](https://github.com/greg-fautas/identity-takeover-detection/actions/workflows/detection-tests.yml)). Stop the emulator with `docker compose down` when you're done.
 
 - The emulator image is about 3.3 GB, and the compose file accepts its [license terms](https://learn.microsoft.com/azure/data-explorer/kusto-emulator-overview) for you (`ACCEPT_EULA=Y`).
-- The records are simulated, shaped like the real Sentinel tables. The replay proves the rule logic; the [live lab](docs/lab.md) proves it against real Entra ID telemetry.
+- The records are simulated, shaped like the real Sentinel tables. The replay tests the rule logic; the [live lab](docs/lab.md) tests it against real Entra ID telemetry.
 
 ## The attack chain
 
@@ -105,7 +105,14 @@ Every scenario is replayed on the Kusto emulator on each push (see [Try it in 5 
 | S5 Reset burst | One operator resets 5 accounts in a few minutes | ITD-004 (plus ITD-001 later for each account) | ✅ | |
 | S6 Persistence | OAuth consent, device registration and an inbox rule after S2 | ITD-005 | ✅ | |
 
-The replay also runs two regression cases found in review. The first is an attacker who waits 6 hours before signing in: ITD-002 must still fire. The second is a user whose IPv6 address changed overnight: nothing should fire.
+Each replay check also confirms the alert shows the evidence it fired on, such as the ticket number. The replay checks each scenario's first alert; ITD-001's later alerts in S4 and S5 are covered by S3 and R3.
+
+The replay also runs five regression cases found in review:
+- **R1:** an attacker waits almost a day before signing in, from IPv6. ITD-002 must still fire.
+- **R2:** a user's IPv6 address changed overnight. Nothing should fire.
+- **R3:** tickets exist, but none covers the reset. ITD-001 must still fire.
+- **R4:** mail forwarding whose Exchange audit event arrives over two hours late. ITD-005 must still fire.
+- **R5:** a self-service reset of a watchlisted admin, the route after a SIM swap. ITD-003 must fire.
 
 ## Repository layout
 
