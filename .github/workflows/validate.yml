@@ -1,0 +1,24 @@
+name: Validate
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml pip-audit -r ingestion/requirements.txt
+      - run: pip-audit -r ingestion/requirements.txt
+      - run: python scripts/validate_detections.py
+      - run: python ingestion/test_servicenow_to_sentinel.py
+      # Parse and type-check every KQL query (rules and docs) with Microsoft's Kusto.Language
+      - run: npm install --prefix "$RUNNER_TEMP/kql" --ignore-scripts --no-audit --no-fund @kusto/language-service-next@12.4.1
+      - run: python scripts/extract_kql.py . | node scripts/check_kql.js "$RUNNER_TEMP/kql/node_modules/@kusto/language-service-next"

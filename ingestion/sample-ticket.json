@@ -1,0 +1,13 @@
+[
+  {
+    "TimeGenerated": "2026-10-26T14:05:00+00:00",
+    "TicketNumber": "INC0010001",
+    "CreatedAt": "2026-10-26T14:03:11+00:00",
+    "UpdatedAt": "2026-10-26T14:05:00+00:00",
+    "CallerUpn": "jordan.lee@contoso.onmicrosoft.com",
+    "OpenedByUpn": "it.operator@contoso.onmicrosoft.com",
+    "AssignedToUpn": "it.operator@contoso.onmicrosoft.com",
+    "ContactType": "phone",
+    "ShortDescription": "New phone, locked out, need MFA reset"
+  }
+]
