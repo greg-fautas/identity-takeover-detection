@@ -24,12 +24,17 @@ KUSTO = os.environ.get("KUSTO_URL", "http://127.0.0.1:8080")
 DB = "ITD"
 REPORT = os.environ.get("REPORT")
 DETECTIONS = Path(__file__).resolve().parent.parent / "detections"
-# The columns the rules read, plus IngestedAt, which stands in for ingestion_time()
+# The columns the rules and the playbook's hunting queries read, plus IngestedAt, which stands in for ingestion_time()
 SCHEMAS = {
     "AuditLogs": "TimeGenerated:datetime, OperationName:string, Result:string, InitiatedBy:dynamic, "
                  "TargetResources:dynamic, IngestedAt:datetime",
     "SigninLogs": "TimeGenerated:datetime, UserPrincipalName:string, IPAddress:string, ResultType:string, "
-                  "AppDisplayName:string, LocationDetails:dynamic, IngestedAt:datetime",
+                  "AppDisplayName:string, LocationDetails:dynamic, DeviceDetail:dynamic, UserAgent:string, "
+                  "IngestedAt:datetime",
+    # read only by the triage playbook's hunting queries (exercise_data.py)
+    "AADNonInteractiveUserSignInLogs": "TimeGenerated:datetime, UserPrincipalName:string, IPAddress:string, "
+                                       "ResultType:string, AppDisplayName:string, LocationDetails:string, "
+                                       "DeviceDetail:string, UserAgent:string, IngestedAt:datetime",
     "OfficeActivity": "TimeGenerated:datetime, Operation:string, UserId:string, ClientIP:string, "
                       "Parameters:string, IngestedAt:datetime",
     "ServiceNowTickets_CL": "TimeGenerated:datetime, TicketNumber:string, CreatedAt:datetime, UpdatedAt:datetime, "

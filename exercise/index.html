@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work the alert</title>
+<meta name="description" content="A triage exercise: work a Sentinel account-takeover alert with real query results from the detection rules and the triage playbook.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:wght@400;700&display=swap">
+<style>
+:root {
+  --paper: #edf0f4; --sheet: #fff; --ink: #18233a; --muted: #556178; --rule: #cbd2dc;
+  --signal: #b3264f; --ok: #1e7a4f; --link: #2457a6; --flash: #fbe3ea;
+  --sans: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --mono: "Atkinson Hyperlegible Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --paper: #121a28; --sheet: #1a2435; --ink: #e3e8f0; --muted: #98a3b5; --rule: #2e3b51;
+          --signal: #f2739a; --ok: #5bc48c; --link: #8ab4f8; --flash: #46243a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.55 var(--sans); }
+a { color: var(--link); }
+:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; }
+code, pre, .mono { font-family: var(--mono); }
+.top { max-width: 1120px; margin: 0 auto; padding: 16px; display: flex; justify-content: space-between; gap: 16px; font-size: .9rem; }
+.top a { color: var(--muted); }
+header.hero { max-width: 1120px; margin: 0 auto; padding: 24px 16px 8px; }
+h1 { margin: 0; max-width: 26ch; font-size: clamp(1.8rem, 4.2vw, 2.6rem); line-height: 1.15; }
+.lede { max-width: 62ch; margin: 16px 0 0; color: var(--muted); font-size: 1.1rem; }
+.steps { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 24px 0 0; padding: 0; list-style: none; counter-reset: step; font-size: .95rem; color: var(--muted); }
+.steps li { counter-increment: step; }
+.steps li::before { content: counter(step) " "; font-family: var(--mono); }
+.steps li[aria-current] { color: var(--ink); font-weight: 700; }
+.steps li.done { color: var(--ok); }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 40px; max-width: 1120px; margin: 0 auto; padding: 16px 16px 64px; }
+#case { max-width: 720px; }
+h2 { margin: 40px 0 4px; font-size: 1.4rem; }
+h2 + p { margin-top: 0; color: var(--muted); }
+.panel { margin: 16px 0; padding: 20px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; }
+.alert { border-left: 5px solid var(--signal); }
+.alert h3 { margin: 0 0 4px; font-size: 1.1rem; }
+.sev { display: inline-block; margin-left: 8px; padding: 0 10px; border: 1px solid var(--signal); border-radius: 99px; color: var(--signal); font-size: .85rem; font-weight: 700; vertical-align: 2px; }
+dl.fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 16px 0 0; font-size: .95rem; }
+dl.fields dt { color: var(--muted); }
+dl.fields dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+.question h3 { margin: 0 0 12px; font-size: 1.1rem; }
+.option { display: flex; gap: 10px; align-items: flex-start; width: 100%; margin: 8px 0; padding: 12px 14px; background: var(--sheet); color: var(--ink);
+          border: 1px solid var(--rule); border-radius: 6px; font: inherit; text-align: left; cursor: pointer; }
+.option:hover:not(:disabled):not(.locked) { border-color: var(--ink); }
+.option:disabled, .option.locked { cursor: default; }
+.option:disabled:not(.picked):not(.right) { color: var(--muted); }
+.option input { margin: 5px 0 0; accent-color: var(--link); }
+.option.right { border: 2px solid var(--ok); }
+.option.picked:not(.right) { border: 2px solid var(--signal); }
+.mark { margin-left: auto; padding-left: 12px; white-space: nowrap; font-size: .85rem; font-weight: 700; }
+.right .mark { color: var(--ok); }
+.picked:not(.right) .mark { color: var(--signal); }
+.hint { margin: 0 0 8px; color: var(--muted); font-size: .95rem; }
+.feedback { margin: 16px 0 0; padding-left: 14px; border-left: 3px solid var(--ok); }
+.feedback.wrong { border-color: var(--signal); }
+.feedback strong { display: block; }
+.feedback ol { margin: 8px 0 0; padding-left: 22px; }
+button.action { margin-top: 16px; padding: 10px 20px; background: var(--ink); color: var(--paper); border: 0; border-radius: 6px; font: inherit; font-weight: 700; cursor: pointer; }
+details.query { margin: 10px 0; background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; }
+details.query summary { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; cursor: pointer; list-style: none; font-weight: 700; }
+details.query summary::-webkit-details-marker { display: none; }
+details.query summary span { color: var(--link); font-weight: 400; white-space: nowrap; }
+.query-body { padding: 0 16px 16px; }
+pre { margin: 0 0 12px; padding: 12px; overflow: auto; background: var(--paper); border-radius: 6px; font-size: .85rem; line-height: 1.45; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: max-content; min-width: 100%; font-size: .85rem; }
+th, td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
+th { color: var(--muted); font-weight: 400; white-space: nowrap; }
+td { max-width: 36ch; font-family: var(--mono); overflow-wrap: anywhere; }
+.found { margin: 10px 0 0; color: var(--muted); font-size: .9rem; }
+.note { margin: 16px 0; padding: 16px 20px; border: 1px dashed var(--rule); border-radius: 8px; }
+.note p { margin: 0; }
+.note small { display: block; margin-top: 8px; color: var(--muted); }
+.score { margin: 16px 0 8px; font-size: 1.5rem; font-weight: 700; line-height: 1.25; }
+aside { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow-y: auto; }
+aside h2 { margin-top: 0; font-size: 1.15rem; }
+.timeline { margin: 16px 0 0 7px; padding: 0; list-style: none; border-left: 2px solid var(--rule); }
+.timeline li { position: relative; padding: 4px 8px 12px 18px; font-size: .9rem; line-height: 1.4; }
+.timeline li::before { content: ""; position: absolute; left: -7px; top: 9px; width: 8px; height: 8px; border: 2px solid var(--muted); border-radius: 50%; background: var(--paper); }
+.timeline li.flag::before { border-color: var(--signal); background: var(--signal); }
+.timeline li.alerted::before { border-radius: 2px; border-color: var(--ink); background: var(--ink); }
+.timeline time, .timeline .source { display: block; color: var(--muted); font-size: .8rem; }
+.timeline time { font-family: var(--mono); }
+.timeline .tag { color: var(--signal); font-weight: 700; }
+.timeline .what { overflow-wrap: anywhere; }
+.timeline li.new { animation: arrive 1.6s ease-out; }
+@keyframes arrive { from { background: var(--flash); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .timeline li.new { animation: none; } }
+.empty { color: var(--muted); font-size: .9rem; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+footer { max-width: 1120px; margin: 0 auto; padding: 0 16px 32px; color: var(--muted); font-size: .85rem; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  aside { position: static; max-height: none; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--rule); }
+}
+</style>
+</head>
+<body>
+<div class="top">
+  <a href="https://github.com/greg-fautas/identity-takeover-detection">Identity takeover detection</a>
+  <a href="https://github.com/greg-fautas/identity-takeover-detection/blob/main/docs/triage-playbook.md">Triage playbook</a>
+</div>
+<header class="hero">
+  <h1 id="headline">Work the alert</h1>
+  <p class="lede">You're the analyst on shift. Work the alert with the team's triage playbook, decide what happened, and contain it. The alerts and query results are real output from the project's detection rules and the playbook's queries.</p>
+  <ol class="steps" id="steps"></ol>
+</header>
+<div class="layout">
+  <div id="case"></div>
+  <p id="status" class="visually-hidden" role="status"></p>
+  <aside aria-labelledby="timeline-heading">
+    <h2 id="timeline-heading">Case timeline</h2>
+    <p class="empty" id="timeline-empty">Events appear here as the queries in step 2 find them. Times are UTC.</p>
+    <ol class="timeline" id="timeline"></ol>
+  </aside>
+</div>
+<footer>Lab data: every identity, ticket and IP address here is synthetic, and the IPs come from ranges reserved for documentation.</footer>
+<script src="data.js"></script>
+<script>
+const X = window.EXERCISE;
+if (!X) {
+  document.getElementById("case").textContent = "The exercise data (data.js) didn't load. Regenerate it with replay/exercise_data.py.";
+  throw new Error("window.EXERCISE is missing");
+}
+const REPO = "https://github.com/greg-fautas/identity-takeover-detection";
+const ALERT = X.alerts["ITD-002"].details;
+const IP = ALERT.AttackerIp;
+const COUNTRIES = { NL: "the Netherlands", US: "the United States" };
+const minutes = (from, to) => Math.round((new Date(to) - new Date(from)) / 60000);
+const clock = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const STEPS = ["Read the alert", "Investigate", "Verify", "Decide", "Contain", "Debrief"];
+
+// Builds DOM nodes; text always goes in as text nodes, because alert fields can be attacker-chosen
+function h(tag, props = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) key in el ? (el[key] = value) : el.setAttribute(key, value);
+  return put(el, ...kids);
+}
+// append() would print null, undefined and false as text, so skip them
+const put = (el, ...kids) => (el.append(...kids.flat().filter(kid => kid != null && kid !== false)), el);
+const announce = text => document.getElementById("status").textContent = text;
+const bareIp = ip => ip.replace(/^\[(.+)\]:\d+$/, "$1").replace(/^([\d.]+):\d+$/, "$1");  // drop a port, IPv4 or [IPv6]
+const show = value => Array.isArray(value) ? value.join(", ") : value && typeof value === "object" ? JSON.stringify(value) : String(value ?? "");
+
+// Case timeline: each query adds the events it found
+const events = new Map();
+function addEvents(list) {
+  const fresh = [];
+  for (const event of list) if (!events.has(event.key)) { events.set(event.key, event); fresh.push(event); }
+  const timeline = document.getElementById("timeline");
+  timeline.replaceChildren(...[...events.values()].sort((a, b) => Date.parse(a.t) - Date.parse(b.t)).map(event => {
+    const flagged = event.ip && bareIp(event.ip) === IP;
+    return h("li", { className: [flagged && "flag", event.alert && "alerted", fresh.includes(event) && "new"].filter(Boolean).join(" ") },
+      h("time", { dateTime: event.t }, clock.format(new Date(event.t))),
+      h("span", { className: "source" }, event.source, flagged && h("span", { className: "tag" }, ", new network")),
+      h("span", { className: "what" }, event.text));
+  }));
+  document.getElementById("timeline-empty").hidden = events.size > 1;
+  return fresh.length;
+}
+const signin = (t, app, ip, source, text) => ({ key: `${t}|${app}|${ip}`, t, source, text, ip });
+const EXTRACT = {
+  "Sign-ins for an account": row => signin(row.TimeGenerated, row.AppDisplayName, row.IPAddress,
+    row.Type === "interactive" ? "Sign-in" : "Sign-in (non-interactive)",
+    `${row.AppDisplayName} from ${row.IPAddress} (${row.Country})${row.Device ? ` on ${row.Device}` : ""}`),
+  "Everything an account did since a time": row => row.Source.startsWith("Sign-in")
+    ? signin(row.TimeGenerated, row.Action, row.IPAddress, row.Source, `${row.Action} from ${row.IPAddress} (${row.Detail})`)
+    : { key: `${row.TimeGenerated}|${row.Action}`, t: row.TimeGenerated, source: row.Source, ip: row.IPAddress,
+        text: `${row.Action}${row.Detail ? `: ${row.Detail}` : ""}${row.IPAddress ? ` from ${row.IPAddress}` : ""}` },
+  "Everything an operator did": row => ({ key: `${row.TimeGenerated}|${row.OperationName}`, t: row.TimeGenerated, source: "Audit",
+    text: `${row.OperationName} for ${row.Target}, by the service desk from ${row.IPAddress}` }),
+  "Tickets for a user": row => ({ key: `ticket|${row.TicketNumber}`, t: row.CreatedAt, source: "ServiceNow",
+    text: `${row.TicketNumber} opened by ${row.ContactType}: "${row.ShortDescription}"` }),
+};
+
+// Questions wait for the query that holds their evidence
+const ran = new Set();
+const waiting = [];
+function runQuery(query) {
+  if (ran.has(query.title)) return null;
+  ran.add(query.title);
+  const added = EXTRACT[query.title] ? addEvents(query.rows.map(EXTRACT[query.title])) : null;
+  const unlocked = waiting.filter(wait => wait.needs === query.title);
+  unlocked.forEach(wait => wait.unlock());
+  const found = `${query.rows.length} ${query.rows.length === 1 ? "row" : "rows"}. ` + (added === null
+    ? "This one summarizes, so it adds nothing to the timeline."
+    : added ? `Added ${added} ${added === 1 ? "event" : "events"} to the case timeline.` : "Everything it found is already on the timeline.");
+  announce(found + (unlocked.length ? " A question is ready to answer." : ""));
+  return found;
+}
+
+function queryConsole() {
+  return h("div", {}, X.queries.map(query => {
+    const body = h("div", { className: "query-body" });
+    const label = h("span", {}, "Run query");
+    const details = h("details", { className: "query" }, h("summary", {}, query.title, label), body);
+    details.addEventListener("toggle", () => {
+      label.textContent = details.open ? "Hide results" : "Show results";
+      if (!details.open || body.childElementCount) return;
+      const found = runQuery(query);
+      const columns = query.rows.length ? Object.keys(query.rows[0]) : [];
+      body.append(h("pre", {}, h("code", {}, query.kql)),
+        query.rows.length
+          ? h("div", { className: "scroll", tabIndex: 0, role: "region", "aria-label": `${query.title} results` },
+              h("table", {}, h("thead", {}, h("tr", {}, columns.map(column => h("th", { scope: "col" }, column)))),
+                h("tbody", {}, query.rows.map(row => h("tr", {}, columns.map(column => h("td", {}, show(row[column]))))))))
+          : h("p", { className: "found" }, "No results."),
+        h("p", { className: "found" }, found));
+    });
+    return details;
+  }));
+}
+
+function alertCard() {
+  const alert = X.alerts["ITD-002"];
+  return h("section", { className: "panel alert", "aria-label": "Alert" },
+    h("h3", {}, alert.name, h("span", { className: "sev" }, alert.severity)),
+    h("dl", { className: "fields" }, Object.entries(alert.details).flatMap(([name, value]) => [h("dt", {}, name), h("dd", {}, show(value))])));
+}
+
+let score = 0;
+const QUESTIONS = [];
+function question(item) {
+  QUESTIONS.push(item);
+  const box = h("section", { className: "panel question" }, h("h3", { tabIndex: -1 }, item.q));
+  const hint = h("p", { className: "hint" });
+  const choose = picked => {
+    const right = item.multi ? item.options.every((option, n) => !!option.right === picked.includes(n)) : !!item.options[picked[0]].right;
+    score += right;
+    options.forEach((el, n) => {
+      const isRight = !!item.options[n].right, isPicked = picked.includes(n);
+      el.classList.add("locked");
+      el.classList.toggle("right", isRight);
+      el.classList.toggle("picked", isPicked);
+      el.querySelector("input")?.setAttribute("disabled", "");
+      if (el.tagName === "BUTTON") el.disabled = true;
+      const mark = isPicked && isRight ? "Your answer, correct" : isPicked ? "Your answer" : isRight ? "Playbook answer" : "";
+      if (mark) el.append(h("span", { className: "mark" }, mark));
+    });
+    check?.remove();
+    const why = item.multi ? item.why[right ? "right" : "wrong"] : item.options[picked[0]].why;
+    const feedback = h("div", { className: `feedback${right ? "" : " wrong"}`, tabIndex: -1 },
+      h("strong", {}, right ? "Correct." : "Not quite."), h("span", {}, why), item.more?.());
+    const next = h("button", { type: "button", className: "action", onclick: () => { next.remove(); advance(); } }, "Continue");
+    put(box, feedback, item.after?.(), next);
+    feedback.focus();
+  };
+  const options = item.options.map((option, n) => item.multi
+    ? h("label", { className: "option" }, h("input", { type: "checkbox", value: n }), h("span", {}, option.text))
+    : h("button", { type: "button", className: "option", onclick: () => choose([n]) }, h("span", {}, option.text)));
+  const check = item.multi ? h("button", { type: "button", className: "action", onclick: () => {
+    const picked = options.flatMap((el, n) => el.querySelector("input").checked ? [n] : []);
+    picked.length ? choose(picked) : hint.textContent = "Select at least one answer first.";
+  } }, "Check answer") : null;
+  put(box, hint, options, check);
+  if (item.needs && !ran.has(item.needs)) {
+    const controls = [...box.querySelectorAll("button, input")];
+    controls.forEach(control => control.disabled = true);
+    hint.textContent = `Run "${item.needs}" above to see the evidence for this one.`;
+    waiting.push({ needs: item.needs, unlock: () => { controls.forEach(control => control.disabled = false); hint.textContent = ""; } });
+  }
+  return box;
+}
+
+const Q = {
+  ticket: {
+    q: `The alert lists ticket ${ALERT.TicketNumbers}, contact type ${ALERT.ContactTypes}. What does the ticket tell you?`,
+    options: [
+      { text: "Jordan asked for this reset, so the alert is probably benign.",
+        why: "A ticket proves that someone called, not who. If this is an attack, the attacker is the caller, and the service desk followed its process for them." },
+      { right: true, text: "The service desk followed its process, but the ticket only records what the caller claimed.",
+        why: "The playbook treats ticket text as a claim, not evidence. What's in doubt is who was on the phone." },
+      { text: "The attacker forged the ticket in ServiceNow.",
+        why: `Nothing points to that: ${ALERT.ResetBy} opened it during the call. The ticket is real; the caller's identity is what's in doubt.` },
+    ],
+  },
+  campaign: {
+    q: `Is ${IP} being used against other accounts?`, needs: "Sign-ins from an IP",
+    options: [
+      { text: "Yes, it signed in to several accounts.", why: "The query returns one account: Jordan's, with two successful sign-ins." },
+      { right: true, text: "No. In the last 7 days it signed in to Jordan's account only.",
+        why: "So it isn't a campaign, at least not from this IP. Several accounts from one IP would mean escalating straight away." },
+      { text: "You can't tell without the firewall logs.", why: "The sign-in logs answer it. The query counts every account that IP signed in to." },
+    ],
+  },
+  activity: {
+    q: "What did the account do after the reset? Select everything the logs show.", needs: "Everything an account did since a time", multi: true,
+    options: [
+      { right: true, text: "Registered a new sign-in method" },
+      { right: true, text: "Consented to the Graph Explorer app" },
+      { right: true, text: "Became an owner of the device DESKTOP-LAB01" },
+      { right: true, text: "Created an inbox rule that moves mail to RSS Feeds" },
+      { text: "Forwarded mail to an outside address" },
+      { text: "Reset another user's password" },
+    ],
+    why: {
+      right: "Four footholds, all within half an hour of the reset. Each one survives a password reset, so containment has to remove every one.",
+      wrong: "Check the query results again: the account registered security info, consented to Graph Explorer, was added as owner of DESKTOP-LAB01 and ran New-InboxRule. There's no forwarding and no other reset.",
+    },
+  },
+  operator: {
+    q: `Is ${ALERT.ResetBy}'s account compromised too?`, needs: "Everything an operator did",
+    options: [
+      { text: "Yes. Disable it before it resets anyone else.",
+        why: `Its log shows only the two changes ${ALERT.TicketNumbers} asked for, so nothing here points to compromise. Confirm before you lock out a colleague: ask the operator through another channel and check their own sign-ins.` },
+      { right: true, text: "Probably not. Its only actions match what the ticket asked for. Confirm with the operator and check their sign-ins.",
+        why: "An action list alone can't clear an account. The playbook checks a resetting operator by asking them through another channel and reviewing their sign-ins for a new IP or device. Also look at their other phone tickets from today, in case the same caller tried again." },
+      { text: "Yes, because it issued a Temporary Access Pass.",
+        why: "A Temporary Access Pass is the normal recovery step for a locked-out user. The failure was in verifying the caller, not in the operator's account." },
+    ],
+  },
+  verify: {
+    q: "You need to know whether Jordan really called. How do you reach them?",
+    options: [
+      { text: "Call the number the caller gave on the ticket.", why: "That number reaches the caller, who may be the attacker. Never use contact details from the ticket or the call." },
+      { text: "Call back the mobile number on file.", why: "This group SIM-swaps, so the number on file may now ring the attacker. The playbook rules out callbacks for ITD-002." },
+      { right: true, text: "Go through Jordan's manager, or see Jordan in person or on video with ID.", why: "Out of band, through a channel the attacker doesn't control." },
+    ],
+    after: () => h("div", { className: "note" },
+      h("p", {}, "Jordan's manager gets Jordan on a video call. Jordan is at home in the US, still has their old phone, has never called the service desk, and doesn't recognize the new sign-in method on the account."),
+      h("small", {}, "Jordan's answer is scripted. Everything else on this page comes from the logs.")),
+  },
+  verdict: {
+    q: "What's your verdict?",
+    options: [
+      { right: true, text: "True positive: account takeover.",
+        why: "Jordan didn't make the call, isn't in the Netherlands, and doesn't recognize the new method. Any one of those makes it a true positive under the playbook." },
+      { text: "Benign: Jordan is travelling.", why: "Jordan confirmed they're at home in the US. Whoever signed in from the Netherlands wasn't Jordan." },
+      { text: "False positive: the rule fired on a normal reset.",
+        why: "The reset was followed by sign-ins from a network the account had never used, then new persistence. That's the sequence ITD-002 exists to catch." },
+    ],
+  },
+  escalate: {
+    q: "Do you escalate to incident response right away?",
+    options: [
+      { text: "No. Jordan's account isn't privileged.", why: "Privilege is one trigger, not the only one. The playbook also escalates when data was accessed." },
+      { right: true, text: "Yes. The attacker created an inbox rule, so they were in Jordan's mailbox. Treat data as accessed.",
+        why: "Creating a rule takes mailbox access, and the Graph Explorer consent may have opened more. Incident response decides the scope." },
+      { text: "Yes. The IP is attacking several accounts.", why: "Your query showed one account. The reason to escalate here is data access." },
+    ],
+  },
+  contain: {
+    q: "What do you do first?",
+    options: [
+      { text: "Reset Jordan's password.", why: "A new password leaves the attacker's sign-in method, sessions, app consent and device in place." },
+      { right: true, text: "Disable the account, then revoke its sessions.", why: "Then keep watching: access tokens already issued stay valid for up to about an hour." },
+      { text: `Block ${IP} with Conditional Access.`, why: "Worth doing, but third. On its own it only slows an attacker who can switch proxies." },
+      { text: "Email Jordan to warn them.", why: "The attacker is in Jordan's mailbox, with a rule that hides mail. Reach Jordan through their manager." },
+    ],
+    more: () => h("div", {}, h("p", { className: "hint", style: "margin-top: 12px" }, "The rest of the playbook's order:"),
+      h("ol", { start: 2 },
+        h("li", {}, "Delete the Temporary Access Pass and the attacker's sign-in method, reset the password, and disable DESKTOP-LAB01. Re-verify Jordan on video before re-enrolling them."),
+        h("li", {}, `Block ${IP} with a Conditional Access named location.`),
+        h("li", {}, "Remove the Graph Explorer consent and the inbox rule."),
+        h("li", {}, "Look for the caller's other attempts: other phone tickets that day and other resets by the same operator."))),
+  },
+};
+
+function debrief() {
+  const persistence = X.alerts["ITD-005"];
+  addEvents([{ key: "alert|ITD-005", t: X.capturedAt, source: "Sentinel", alert: true, text: `${persistence.name} fired` }]);
+  const link = (path, text) => h("li", {}, h("a", { href: `${REPO}/${path}` }, text));
+  return h("section", {},
+    h("p", { className: "score", tabIndex: -1 }, `You made ${score} of ${QUESTIONS.length} calls the way the playbook does.`),
+    h("p", {}, `In this replay, ITD-002 ran ${minutes(ALERT.FirstActivity, X.capturedAt)} minutes after the attacker's first sign-in; ` +
+      "in production it runs every hour. ITD-005 fired in the same run for the app consent, the device and the inbox rule, and it's now on your timeline."),
+    h("p", {}, "The alerts and query results are real output: the project's five detection rules and the playbook's hunting queries, run against simulated logs on " +
+      `Microsoft's Kusto emulator on ${clock.format(new Date(X.capturedAt))} UTC. Only Jordan's answer in step 3 is scripted.`),
+    h("ul", {},
+      link("blob/main/docs/triage-playbook.md", "Read the full triage playbook"),
+      link("blob/main/detections/ITD-002-takeover-after-credential-reset.yaml", "See the ITD-002 rule"),
+      link("blob/main/docs/incident-report.md", "Read the incident report template"),
+      link("#try-it-in-5-minutes", "Run every scenario through the rules yourself")),
+    h("button", { type: "button", className: "action", onclick: () => location.reload() }, "Start over"));
+}
+
+const FLOW = [
+  { step: 0, intro: "Start with what the alert already tells you.", block: alertCard },
+  { step: 0, block: () => question(Q.ticket), waits: true },
+  { step: 1, intro: "Run the playbook's hunting queries. They ran against the same logs the rule saw, and what they find goes on the case timeline.", block: queryConsole },
+  { step: 1, block: () => question(Q.campaign), waits: true },
+  { step: 1, block: () => question(Q.activity), waits: true },
+  { step: 1, block: () => question(Q.operator), waits: true },
+  { step: 2, intro: "The logs show what happened, not who did it. Only Jordan can say whether Jordan called.", block: () => question(Q.verify), waits: true },
+  { step: 3, block: () => question(Q.verdict), waits: true },
+  { step: 3, block: () => question(Q.escalate), waits: true },
+  { step: 4, intro: "Assume the attacker is still signed in. Contain first, explain afterwards.", block: () => question(Q.contain), waits: true },
+  { step: 5, block: debrief },
+];
+let position = 0, currentStep = -1;
+function advance() {
+  const caseFile = document.getElementById("case");
+  let focus;
+  while (position < FLOW.length) {
+    const item = FLOW[position++];
+    if (item.step !== currentStep) {
+      currentStep = item.step;
+      const heading = h("h2", { tabIndex: -1 }, `${currentStep + 1}. ${STEPS[currentStep]}`);
+      put(caseFile, heading, item.intro && h("p", {}, item.intro));
+      focus ??= heading;
+      [...document.getElementById("steps").children].forEach((li, n) => {
+        n === currentStep ? li.setAttribute("aria-current", "step") : li.removeAttribute("aria-current");
+        li.classList.toggle("done", n < currentStep);
+      });
+    }
+    const node = item.block();
+    caseFile.append(node);
+    focus ??= node.querySelector("h3, .score");
+    if (item.waits) break;
+  }
+  if (position > 2) focus?.focus();
+}
+
+const country = ALERT.Countries.split(", ").map(code => COUNTRIES[code] ?? code).join(" and ");
+document.getElementById("headline").textContent =
+  `Jordan Lee's sign-in methods were reset ${minutes(ALERT.ResetTime, X.capturedAt)} minutes ago. Then someone signed in from ${country}.`;
+document.getElementById("steps").append(...STEPS.map(step => h("li", {}, step)));
+addEvents([{ key: "alert|ITD-002", t: X.capturedAt, source: "Sentinel", alert: true, text: `${X.alerts["ITD-002"].name} fired` }]);
+advance();
+</script>
+</body>
+</html>

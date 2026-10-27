@@ -13,7 +13,9 @@ This project feeds ServiceNow tickets into Sentinel alongside Entra ID audit and
 
 ## Try it in 5 minutes
 
-You don't need an Azure or ServiceNow account, just [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+**In your browser, with nothing to install:** [work the alert](https://greg-fautas.github.io/identity-takeover-detection/exercise/) as the analyst on shift. You get the ITD-002 alert for a phone-ticket takeover (scenarios S2 and S6 played as one incident), run the triage playbook's hunting queries, decide what happened, and contain it. The alerts and query results were captured from the real rules and queries running on the Kusto emulator ([`exercise_data.py`](replay/exercise_data.py)).
+
+**To run the rules yourself,** you don't need an Azure or ServiceNow account, just [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
 **On Windows, without a terminal:** [download the ZIP](https://github.com/greg-fautas/identity-takeover-detection/archive/refs/heads/main.zip), extract it, and double-click `Start-Demo.bat`. It starts Docker Desktop if it isn't running, runs the replay, opens the results in your browser, and stops the emulator. If Windows warns that the file came from the internet, choose **Run** (or **More info**, then **Run anyway**).
 
@@ -126,6 +128,7 @@ detections/   Sentinel analytics rules, one YAML file per rule
 replay/       scenario replay on the Kusto emulator (scenarios.py holds the simulated records)
 compose.yaml  runs the emulator and the replay: docker compose run --rm replay
 Start-Demo.bat  the same replay as a double-click launcher for Windows
+exercise/     the browser triage exercise; replay/exercise_data.py captures its data.js from the emulator
 ingestion/    ServiceNow-to-Sentinel ticket pipeline and its test
 docs/         lab.md (build and attack the lab), triage-playbook.md, incident-report.md
 scripts/      validate_detections.py, extract_kql.py and check_kql.js, run by CI on every push
