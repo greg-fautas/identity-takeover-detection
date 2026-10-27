@@ -13,7 +13,9 @@ services:
       - kusto
     environment:
       KUSTO_URL: http://kusto:8080
+      REPORT: /report/index.html  # the results as a web page, in replay-report/ on your machine
     volumes:
       - .:/repo:ro
+      - ./replay-report:/report
     working_dir: /repo
     command: sh -c "pip install --quiet --disable-pip-version-check --root-user-action=ignore pyyaml && python replay/replay.py"

@@ -3,7 +3,9 @@
 Run from the repo root: docker compose run --rm replay
 (or, with an emulator already listening: KUSTO_URL=http://127.0.0.1:8080 python replay/replay.py)
 Prints a Markdown table of which rules fired per scenario and exits 1 if any scenario misbehaves.
+Set REPORT to a file path to also write the results as an HTML page (compose writes replay-report/index.html).
 """
+import html
 import json
 import os
 import sys
@@ -20,6 +22,7 @@ from scenarios import PRIVILEGED, SCENARIOS
 # 127.0.0.1, not localhost: on Windows, localhost can resolve to IPv6, which Docker's localhost-only port refuses
 KUSTO = os.environ.get("KUSTO_URL", "http://127.0.0.1:8080")
 DB = "ITD"
+REPORT = os.environ.get("REPORT")
 DETECTIONS = Path(__file__).resolve().parent.parent / "detections"
 # The columns the rules read, plus IngestedAt, which stands in for ingestion_time()
 SCHEMAS = {
@@ -105,8 +108,68 @@ def rules():
     for path in sorted(DETECTIONS.glob("*.yaml")):
         rule = yaml.safe_load(path.read_text(encoding="utf-8"))
         # every table exists here, so a fuzzy union could only hide a broken leg
-        yield rule["name"].split()[0], (rule["query"].replace("ingestion_time()", "IngestedAt")
-                                        .replace("isfuzzy=true", "isfuzzy=false"))
+        yield rule["name"].split()[0], rule, (rule["query"].replace("ingestion_time()", "IngestedAt")
+                                              .replace("isfuzzy=true", "isfuzzy=false"))
+
+
+STYLE = """
+:root { color-scheme: light dark; --bg: #fff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;
+        --pass: #1a7f37; --fail: #cf222e; --high: #bc4c00; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;
+          --pass: #3fb950; --fail: #f85149; --high: #f0883e; }
+}
+body { margin: 0 auto; max-width: 1100px; padding: 24px 16px; background: var(--bg); color: var(--fg);
+       font: 15px/1.5 system-ui, sans-serif; }
+h1 { margin: 0 0 4px; font-size: 1.6rem; }
+h2 { margin: 2rem 0 .5rem; font-size: 1.15rem; }
+.muted { color: var(--muted); }
+.wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.pass { color: var(--pass); font-weight: 700; }
+.fail { color: var(--fail); font-weight: 700; }
+details { margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+summary { padding: 10px 12px; cursor: pointer; }
+details table { background: var(--bg); }
+details th { width: 1%; white-space: nowrap; color: var(--muted); font-weight: 500; }
+details td { font: 13px/1.5 ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+.sev { margin-left: 6px; padding: 1px 8px; border: 1px solid currentColor; border-radius: 99px; font-size: 12px; }
+.High { color: var(--high); }
+"""
+
+
+def report(outcomes, rules_by_id, ran_at):
+    """Render the replay as a standalone HTML page. Alert fields can be attacker-chosen, so everything is escaped."""
+    esc = html.escape
+    rows = "".join(f"<tr><td>{esc(scenario_id)}</td><td>{esc(title)}</td>"
+                   f"<td>{esc(', '.join(sorted(expected)) or 'nothing')}</td>"
+                   f"<td>{esc(', '.join(sorted(fired)) or 'nothing')}</td>"
+                   f"<td class='{'pass' if passed else 'fail'}'>{'PASS' if passed else 'FAIL'}</td></tr>"
+                   for scenario_id, title, expected, fired, passed in outcomes)
+    alerts = []
+    for scenario_id, title, _, fired, _ in outcomes:
+        for rule_id, hits in sorted(fired.items()):
+            rule = rules_by_id[rule_id]
+            fields = "".join(f"<tr><th>{esc(name)}</th><td>{esc(value if isinstance(value, str) else json.dumps(value))}</td></tr>"
+                             for name, value in hits[0].items())
+            more = f" <span class='muted'>(first of {len(hits)} alerts)</span>" if len(hits) > 1 else ""
+            alerts.append(f"<details><summary><b>{esc(scenario_id)}</b> {esc(title)}<br>fired <b>{esc(rule['name'])}</b>"
+                          f"<span class='sev {esc(rule['severity'])}'>{esc(rule['severity'])}</span>{more}</summary>"
+                          f"<div class='wrap'><table>{fields}</table></div></details>")
+    passed = sum(outcome[-1] for outcome in outcomes)
+    return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+            f"<meta name='viewport' content='width=device-width, initial-scale=1'>"
+            f"<title>Detection replay</title><style>{STYLE}</style></head><body>"
+            f"<h1>Identity takeover detection: scenario replay</h1>"
+            f"<p class='muted'>The five Sentinel rules, run against simulated logs on Microsoft's Kusto emulator, "
+            f"{ran_at:%Y-%m-%d %H:%M} UTC</p>"
+            f"<p class='{'pass' if passed == len(outcomes) else 'fail'}'>{passed} of {len(outcomes)} scenarios "
+            f"behaved as expected</p>"
+            f"<h2>Scenarios</h2><div class='wrap'><table><thead><tr><th>Scenario</th><th>What happens</th>"
+            f"<th>Should fire</th><th>Fired</th><th>Result</th></tr></thead><tbody>{rows}</tbody></table></div>"
+            f"<h2>Alerts</h2><p class='muted'>The first alert from each rule that fired, with the details an analyst "
+            f"would see. Select one to expand it.</p>{''.join(alerts)}</body></html>")
 
 
 def main():
@@ -114,12 +177,13 @@ def main():
     wait_for_emulator()
     setup()
     detections = list(rules())
-    lines, alerts, failed = [], [], False
+    lines, alerts, outcomes, failed = [], [], [], False
+    ran_at = datetime.now(timezone.utc)
     for scenario_id, title, expected, events in SCENARIOS:
         now = datetime.now(timezone.utc).replace(microsecond=0)
         load(events, now)
         fired = {}
-        for rule_id, query in detections:
+        for rule_id, _, query in detections:
             try:
                 # pin now() and ago() to the instant the records were placed relative to
                 results = kusto(f"set query_now = {literal(now, 'datetime')};\n{query}")
@@ -134,6 +198,7 @@ def main():
             print(f"{scenario_id} alert lacks {missing}", file=sys.stderr)
         passed = set(fired) == set(expected) and not missing
         failed = failed or not passed
+        outcomes.append((scenario_id, title, expected, fired, passed))
         lines.append(f"| {scenario_id} | {title} | {', '.join(sorted(expected)) or 'nothing'} "
                      f"| {', '.join(sorted(fired)) or 'nothing'} | {'PASS' if passed else '**FAIL**'} |")
         alerts += [f"- **{scenario_id} -> {rule_id}:** {json.dumps(results[0])[:400]}" for rule_id, results in fired.items()]
@@ -141,6 +206,9 @@ def main():
     print("\n".join(lines))
     print("\nFirst alert from each rule that fired:\n")
     print("\n".join(alerts))
+    if REPORT:
+        Path(REPORT).write_text(report(outcomes, {rule_id: rule for rule_id, rule, _ in detections}, ran_at),
+                                encoding="utf-8")
     sys.exit(1 if failed else 0)
 
 

@@ -22,7 +22,10 @@ goto :end
 
 :run
 echo The first run downloads the emulator (about 3.3 GB), which can take a while.
+rem remove the last report so a failed run can't open stale results
+del /q "replay-report\index.html" 2>nul
 docker compose run --rm replay
+if exist "replay-report\index.html" start "" "replay-report\index.html"
 rem stop the emulator so it isn't left running in the background
 docker compose down
 
