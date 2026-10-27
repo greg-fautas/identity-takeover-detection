@@ -13,7 +13,11 @@ This project feeds ServiceNow tickets into Sentinel alongside Entra ID audit and
 
 ## Try it in 5 minutes
 
-You don't need an Azure or ServiceNow account, just [Docker](https://www.docker.com/products/docker-desktop/):
+You don't need an Azure or ServiceNow account, just [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+**On Windows, without a terminal:** [download the ZIP](https://github.com/greg-fautas/identity-takeover-detection/archive/refs/heads/main.zip), extract it, and double-click `Start-Demo.bat`. It starts Docker Desktop if it isn't running, runs the replay, and stops the emulator when it's done. If Windows warns that the file came from the internet, choose **Run** (or **More info**, then **Run anyway**).
+
+**From a terminal:**
 
 ```
 git clone https://github.com/greg-fautas/identity-takeover-detection
@@ -24,6 +28,7 @@ docker compose run --rm replay
 This starts Microsoft's free [Kusto emulator](https://learn.microsoft.com/azure/data-explorer/kusto-emulator-overview), which runs the same query engine as Sentinel. It loads simulated log records for every lab scenario, runs the five real rules against them, and prints which alerts fired, with the details an analyst would see. The same replay runs on every push ([Detection tests](https://github.com/greg-fautas/identity-takeover-detection/actions/workflows/detection-tests.yml)). Stop the emulator with `docker compose down` when you're done.
 
 - The emulator image is about 3.3 GB, and the compose file accepts its [license terms](https://learn.microsoft.com/azure/data-explorer/kusto-emulator-overview) for you (`ACCEPT_EULA=Y`).
+- The emulator needs an x64 processor. Microsoft [doesn't support it on ARM](https://learn.microsoft.com/azure/data-explorer/kusto-emulator-install), which includes Apple Silicon Macs.
 - The records are simulated, shaped like the real Sentinel tables. The replay tests the rule logic; the [live lab](docs/lab.md) tests it against real Entra ID telemetry.
 
 ## The attack chain
@@ -120,6 +125,7 @@ The replay also runs five regression cases found in review:
 detections/   Sentinel analytics rules, one YAML file per rule
 replay/       scenario replay on the Kusto emulator (scenarios.py holds the simulated records)
 compose.yaml  runs the emulator and the replay: docker compose run --rm replay
+Start-Demo.bat  the same replay as a double-click launcher for Windows
 ingestion/    ServiceNow-to-Sentinel ticket pipeline and its test
 docs/         lab.md (build and attack the lab), triage-playbook.md, incident-report.md
 scripts/      validate_detections.py, extract_kql.py and check_kql.js, run by CI on every push
